@@ -97,16 +97,12 @@ require_once __DIR__ . '/../includes/header.php';
         </div>
     </div>
 
-    <!-- Two-column layout: Left sidebar + Right settings content -->
-    <div style="display: flex; gap: 2rem; align-items: flex-start; margin-top: 1rem; width: 100%;">
-        
-        <!-- LEFT COLUMN: Side Navigation Bar -->
-        <div style="width: 260px; min-width: 260px; flex-shrink: 0;">
-            <?php require_once __DIR__ . '/../includes/settings_sidebar.php'; ?>
-        </div>
+    <div class="settings-layout">
+        <!-- Reusable Side Navigation -->
+        <?php require_once __DIR__ . '/../includes/settings_sidebar.php'; ?>
 
-        <!-- RIGHT COLUMN: Shift Templates Settings & Table -->
-        <div style="flex: 1 1 auto; min-width: 0;">
+        <!-- Main Settings Content Area -->
+        <main class="settings-content">
             <?php if ($error): ?>
                 <div class="alert-danger" style="margin-bottom: 1rem;"><?= htmlspecialchars($error) ?></div>
             <?php endif; ?>
@@ -150,7 +146,7 @@ require_once __DIR__ . '/../includes/header.php';
                             <?= $editTemplate ? 'Update Template' : 'Save Template' ?>
                         </button>
                         <?php if ($editTemplate): ?>
-                            <a href="shift_templates.php" class="btn-reset">Cancel</a>
+                            <a href="shift_templates.php" class="btn-reset" style="text-decoration: none;">Cancel</a>
                         <?php endif; ?>
                     </div>
                 </form>
@@ -181,12 +177,12 @@ require_once __DIR__ . '/../includes/header.php';
                                         <td><?= date('g:i A', strtotime($st['default_end_time'])) ?></td>
                                         <td><?= (int)$st['unpaid_break_minutes'] ?> mins</td>
                                         <td>
-                                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                            <div class="action-buttons">
                                                 <a href="shift_templates.php?edit_id=<?= $st['shift_template_id'] ?>" class="btn-edit">Edit</a>
-                                                <form method="POST" action="shift_templates.php" style="margin: 0;" onsubmit="return confirm('Delete this shift template?');">
+                                                <form method="POST" action="shift_templates.php" onsubmit="return confirm('Are you sure you want to delete this shift template?');">
                                                     <input type="hidden" name="action" value="delete">
                                                     <input type="hidden" name="shift_template_id" value="<?= $st['shift_template_id'] ?>">
-                                                    <button type="submit" class="btn-reset" style="color: #e53e3e; border-color: #feb2b2;">Delete</button>
+                                                    <button type="submit" class="btn-delete">Delete</button>
                                                 </form>
                                             </div>
                                         </td>
@@ -201,8 +197,7 @@ require_once __DIR__ . '/../includes/header.php';
                     </table>
                 </div>
             </div>
-        </div>
-
+        </main>
     </div>
 </div>
 
