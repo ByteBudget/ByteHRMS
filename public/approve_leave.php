@@ -44,7 +44,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'id'          => $requestId
                 ]);
 
-                // If approved, update employee's used_hours in leave_balances
+                $removedShifts = 0;
+
+                // If approved, update leave_balances and remove overlapping shifts from roster
                 if ($action === 'approved') {
                     $year = (int)date('Y', strtotime($req['start_date']));
                     $balStmt = $pdo->prepare('
@@ -58,10 +60,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'type_id' => $req['leave_type_id'],
                         'year'    => $year
                     ]);
+
+                    $removeShiftsStmt = $pdo->prepare('
+                        DELETE FROM shift_assignments
+                        WHERE employee_id = :emp_id
+                          AND shift_date BETWEEN :start_date AND :end_date
+                    ');
+                    $removeShiftsStmt->execute([
+                        'emp_id'     => $req['employee_id'],
+                        'start_date' => $req['start_date'],
+                        'end_date'   => $req['end_date']
+                    ]);
+                    $removedShifts = $removeShiftsStmt->rowCount();
                 }
 
                 $pdo->commit();
                 $success = 'Request #' . $requestId . ' has been marked as ' . ucfirst($action) . '.';
+                if ($action === 'approved' && $removedShifts > 0) {
+                    $success .= ' Removed ' . $removedShifts . ' conflicting shift(s) from the roster.';
+                }
             } else {
                 $pdo->rollBack();
                 $error = 'Request not found or already processed.';
