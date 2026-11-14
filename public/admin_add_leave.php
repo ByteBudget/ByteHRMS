@@ -92,8 +92,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 $pdo->beginTransaction();
 
-                $isApproved = ($approvalStatus === 'approved');
-                $status     = $isApproved ? 'approved' : 'pending';
+                $isApproved    = ($approvalStatus === 'approved');
+                $status        = $isApproved ? 'approved' : 'pending';
+                $removedShifts = 0;
 
                 $stmt = $pdo->prepare('
                     INSERT INTO leave_requests (employee_id, leave_type_id, start_date, end_date, total_hours, reason, status)
@@ -109,7 +110,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'status'     => $status
                 ]);
 
-                // If approved immediately, deduct from employee balance
+                // If approved immediately, deduct from employee balance and remove overlapping shifts from roster
                 if ($isApproved) {
                     $year = (int)date('Y', strtotime($startDate));
                     $updStmt = $pdo->prepare('
@@ -123,10 +124,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'type_id' => $leaveTypeId,
                         'year'    => $year
                     ]);
+
+                    $removeShiftsStmt = $pdo->prepare('
+                        DELETE FROM shift_assignments
+                        WHERE employee_id = :emp_id
+                          AND shift_date BETWEEN :start_date AND :end_date
+                    ');
+                    $removeShiftsStmt->execute([
+                        'emp_id'     => $employeeId,
+                        'start_date' => $startDate,
+                        'end_date'   => $endDate
+                    ]);
+                    $removedShifts = $removeShiftsStmt->rowCount();
                 }
 
                 $pdo->commit();
                 $success = "Time off entry logged successfully ({$totalHours} net hours assigned).";
+                if ($isApproved && $removedShifts > 0) {
+                    $success .= " Removed {$removedShifts} conflicting shift(s) from the roster.";
+                }
             } catch (Exception $e) {
                 if ($pdo->inTransaction()) { $pdo->rollBack(); }
                 $error = 'Failed to create time off entry: ' . $e->getMessage();
