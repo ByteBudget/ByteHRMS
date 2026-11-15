@@ -17,7 +17,7 @@ if (!hasRole('admin') && !hasRole('manager') && !hasRole('hr_specialist')) {
 $configFile = __DIR__ . '/../config/payroll_settings.php';
 $payrollSettings = file_exists($configFile) ? require $configFile : [
     'pay_frequency'       => 'bi_weekly',
-    'anchor_start_date'  => '2026-01-05',
+    'anchor_start_date'   => '2026-01-05',
     'pay_day_offset'      => 5,
     'overtime_multiplier' => 1.50
 ];
@@ -30,7 +30,6 @@ function generatePayPeriods($settings, $numPeriods = 8) {
     $frequency = $settings['pay_frequency'];
     $anchor    = strtotime($settings['anchor_start_date']);
     $today     = time();
-    $otMult    = (float)($settings['overtime_multiplier'] ?? 1.50);
 
     if ($frequency === 'bi_weekly' || $frequency === 'weekly') {
         $daysInCycle = ($frequency === 'bi_weekly') ? 14 : 7;
@@ -81,6 +80,35 @@ function generatePayPeriods($settings, $numPeriods = 8) {
     return $periods;
 }
 
+/**
+ * Calculates gross pay for an annual salary based on pay frequency or custom date range.
+ */
+function calculateSalaryGrossPay(float $annualSalary, string $frequency, string $startDate, string $endDate, bool $isStandardPeriod): float {
+    if ($annualSalary <= 0) {
+        return 0.0;
+    }
+
+    if ($isStandardPeriod) {
+        $divisors = [
+            'weekly'       => 52,
+            'bi_weekly'    => 26,
+            'semi_monthly' => 24,
+            'monthly'      => 12,
+        ];
+        $periodsPerYear = $divisors[$frequency] ?? 26;
+        return $annualSalary / $periodsPerYear;
+    }
+
+    // Prorate across custom date range (inclusive)
+    $startTs = strtotime($startDate);
+    $endTs   = strtotime($endDate);
+    if ($startTs === false || $endTs === false || $endTs < $startTs) {
+        return 0.0;
+    }
+    $daysInclusive = (int)round(($endTs - $startTs) / 86400) + 1;
+    return ($annualSalary / 365.0) * $daysInclusive;
+}
+
 $availablePeriods = generatePayPeriods($payrollSettings, 6);
 
 // 2. Resolve Selected Date Range
@@ -111,6 +139,8 @@ if (empty($startDate) || empty($endDate)) {
         $endDate   = date('Y-m-t');
     }
 }
+
+$isStandardPeriod = !empty($selectedPeriodKey);
 
 // 3. Fetch Payroll Data
 $query = '
@@ -146,6 +176,7 @@ $stmt->execute([
 $payrollData = $stmt->fetchAll();
 
 $otMultiplier    = (float)($payrollSettings['overtime_multiplier'] ?? 1.50);
+$defaultFreq     = $payrollSettings['pay_frequency'] ?? 'bi_weekly';
 $grandTotalHours = 0;
 $grandTotalPay   = 0;
 
@@ -158,7 +189,7 @@ require_once __DIR__ . '/../includes/header.php';
     <div class="directory-header" style="margin-top: 1.5rem; margin-bottom: 1.5rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
         <div>
             <h2>Payroll & Wage Summary Report</h2>
-            <p class="subtitle">Gross earnings multiplier (Logged Hours × Pay Rate) for selected pay cycle.</p>
+            <p class="subtitle">Gross earnings summary (Hourly Logged Hours & Prorated Annual Salary) for selected pay cycle.</p>
         </div>
 
         <div style="display: flex; gap: 0.5rem; align-items: center;">
@@ -228,12 +259,14 @@ require_once __DIR__ . '/../includes/header.php';
                             $regHours    = (float)$row['regular_hours'];
                             $otHours     = (float)$row['total_overtime'];
                             $totalHours  = (float)$row['total_hours'];
-                            $payModel    = strtolower($row['pay_model'] ?? 'hourly');
+                            $payModel    = strtolower(trim($row['pay_model'] ?? 'hourly'));
+                            $empFreq     = !empty($row['pay_frequency']) ? strtolower(trim($row['pay_frequency'])) : $defaultFreq;
+                            $isSalaried  = in_array($payModel, ['salary', 'salaried'], true);
 
-                            if ($payModel === 'hourly') {
-                                $grossPay = ($regHours * $rate) + ($otHours * ($rate * $otMultiplier));
+                            if ($isSalaried) {
+                                $grossPay = calculateSalaryGrossPay($rate, $empFreq, $startDate, $endDate, $isStandardPeriod);
                             } else {
-                                $grossPay = $totalHours * $rate;
+                                $grossPay = ($regHours * $rate) + ($otHours * ($rate * $otMultiplier));
                             }
 
                             $grandTotalHours += $totalHours;
@@ -251,7 +284,12 @@ require_once __DIR__ . '/../includes/header.php';
                                 <td><?= htmlspecialchars($row['pay_model'] ?? 'Hourly') ?></td>
                                 <td>
                                     <?php if ($rate > 0): ?>
-                                        $<?= number_format($rate, 2) ?>/hr
+                                        <?php if ($isSalaried): ?>
+                                            $<?= number_format($rate, 2) ?>/yr
+                                            <small style="color: #718096; display: block;">(<?= htmlspecialchars(str_replace('_', '-', $empFreq)) ?>)</small>
+                                        <?php else: ?>
+                                            $<?= number_format($rate, 2) ?>/hr
+                                        <?php endif; ?>
                                     <?php else: ?>
                                         <span style="color: #e53e3e;">No Rate Set</span>
                                     <?php endif; ?>
