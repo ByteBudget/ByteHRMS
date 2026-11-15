@@ -21,7 +21,7 @@ $endDateObj = clone $startDateObj;
 $endDateObj->modify('+6 days');
 $sundayDate = $endDateObj->format('Y-m-d');
 
-// Handle Schedule Actions (Create Range or Delete Shift)
+// Handle Schedule Actions (Create Range, Delete Shift, or Email Week Schedules)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManageSchedule) {
     $action  = $_POST['action'] ?? '';
     $shiftId = filter_input(INPUT_POST, 'shift_id', FILTER_VALIDATE_INT);
@@ -33,6 +33,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canManageSchedule) {
             $success = 'Shift assignment removed successfully.';
         } catch (Exception $e) {
             $error = 'Failed to delete shift: ' . $e->getMessage();
+        }
+    } elseif ($action === 'email_week_schedules') {
+        require_once __DIR__ . '/../includes/schedule_mailer.php';
+        $mailResult = sendWeeklyScheduleEmails($pdo, $mondayDate, $sundayDate, true);
+
+        if ($mailResult['sent'] > 0) {
+            $success = 'Emailed schedules for ' . date('M j', strtotime($mondayDate)) . '–' . date('M j', strtotime($sundayDate)) . " to {$mailResult['sent']} employee(s).";
+            if ($mailResult['skipped_no_email'] > 0) {
+                $success .= " Skipped {$mailResult['skipped_no_email']} employee(s) with no email on file.";
+            }
+        } elseif (!empty($mailResult['errors'])) {
+            $error = 'Failed to send schedule emails: ' . implode('; ', $mailResult['errors']);
+        } else {
+            $error = 'No scheduled employees with valid email addresses found for this week.';
         }
     } elseif ($action === 'create_schedule_range') {
         $rawEmpIds   = $_POST['employee_ids'] ?? [];
@@ -211,10 +225,16 @@ require_once __DIR__ . '/../includes/header.php';
             <h2>Shift Roster & Schedule Generator</h2>
             <p class="subtitle">Weekly roster view • <?= date('M j, Y', strtotime($mondayDate)) ?> – <?= date('M j, Y', strtotime($sundayDate)) ?></p>
         </div>
-        <div style="display: flex; gap: 0.5rem; align-items: center;">
+        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
             <a href="schedule.php?week=<?= $weekOffset - 1 ?>" class="btn-reset" style="text-decoration: none; font-size: 0.85rem;">← Prev Week</a>
             <a href="schedule.php?week=0" class="btn-reset" style="text-decoration: none; font-size: 0.85rem;">Current Week</a>
             <a href="schedule.php?week=<?= $weekOffset + 1 ?>" class="btn-reset" style="text-decoration: none; font-size: 0.85rem;">Next Week →</a>
+            <?php if ($canManageSchedule): ?>
+                <form method="POST" action="schedule.php?week=<?= $weekOffset ?>" style="margin: 0;" onsubmit="return confirm('Email this week\'s schedule to all scheduled employees?');">
+                    <input type="hidden" name="action" value="email_week_schedules">
+                    <button type="submit" class="btn-submit" style="padding: 0.45rem 0.85rem; font-size: 0.85rem; width: auto;">Email Week Schedules</button>
+                </form>
+            <?php endif; ?>
         </div>
     </div>
 
