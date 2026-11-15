@@ -32,7 +32,7 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
         return $result;
     }
 
-    // Fetch all shifts for the target Monday–Sunday week
+    // Fetch all shifts for the target Monday–Sunday week (aligned with schema_lock.md)
     $stmt = $pdo->prepare('
         SELECT
             sa.employee_id,
@@ -78,7 +78,7 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
     }
 
     $weekLabel = date('M j, Y', strtotime($mondayDate)) . ' – ' . date('M j, Y', strtotime($sundayDate));
-    $portalUrl = htmlspecialchars($mailConfig['portal_url'] ?? 'dashboard.php');
+    $portalUrl = htmlspecialchars($mailConfig['portal_url'] ?? 'dashboard.php', ENT_QUOTES, 'UTF-8');
 
     foreach ($byEmployee as $empId => $empData) {
         if (empty($empData['email'])) {
@@ -91,8 +91,8 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
         foreach ($empData['shifts'] as $s) {
             $dayStr   = date('l, M j', strtotime($s['shift_date']));
             $timeStr  = date('g:i A', strtotime($s['start_time'])) . ' – ' . date('g:i A', strtotime($s['end_time']));
-            $shiftLbl = htmlspecialchars($s['template_name'] ?? 'Work Shift');
-            $locStr   = htmlspecialchars($s['location'] ?? 'Main Office');
+            $shiftLbl = htmlspecialchars($s['template_name'] ?? 'Work Shift', ENT_QUOTES, 'UTF-8');
+            $locStr   = htmlspecialchars($s['location'] ?? 'Headquarters', ENT_QUOTES, 'UTF-8');
 
             $rowsHtml .= "
                 <tr>
@@ -102,41 +102,49 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
                     <td style='padding: 10px 12px; border-bottom: 1px solid #e2e8f0; color: #718096;'>{$locStr}</td>
                 </tr>";
 
-            $plainLines[] = "- {$dayStr}: {$timeStr} ({$shiftLbl} @ {$locStr})";
+            $plainLines[] = "- {$dayStr}: {$timeStr} (" . ($s['template_name'] ?? 'Work Shift') . " @ " . ($s['location'] ?? 'Headquarters') . ")";
         }
 
-        $firstName = htmlspecialchars($empData['first_name']);
-        $htmlBody = "
-        <div style='font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; max-width: 640px; margin: 0 auto; color: #2d3748;'>
-            <div style='background: #2b6cb0; color: #ffffff; padding: 18px 24px; border-radius: 8px 8px 0 0;'>
-                <h2 style='margin: 0; font-size: 18px;'>Your Work Schedule: {$weekLabel}</h2>
-            </div>
-            <div style='border: 1px solid #e2e8f0; border-top: none; padding: 20px 24px; border-radius: 0 0 8px 8px; background: #ffffff;'>
-                <p style='margin-top: 0;'>Hi {$firstName},</p>
-                <p>Here are your scheduled shifts for the upcoming week (<strong>{$weekLabel}</strong>):</p>
+        $firstName = htmlspecialchars($empData['first_name'], ENT_QUOTES, 'UTF-8');
+        $htmlBody = "<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='UTF-8'>
+    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+</head>
+<body style='margin: 0; padding: 16px; background-color: #f7fafc;'>
+    <div style='font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, sans-serif; max-width: 640px; margin: 0 auto; color: #2d3748;'>
+        <div style='background: #2b6cb0; color: #ffffff; padding: 18px 24px; border-radius: 8px 8px 0 0;'>
+            <h2 style='margin: 0; font-size: 18px;'>Your Work Schedule: {$weekLabel}</h2>
+        </div>
+        <div style='border: 1px solid #e2e8f0; border-top: none; padding: 20px 24px; border-radius: 0 0 8px 8px; background: #ffffff;'>
+            <p style='margin-top: 0;'>Hi {$firstName},</p>
+            <p>Here are your scheduled shifts for the upcoming week (<strong>{$weekLabel}</strong>):</p>
 
-                <table style='width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;'>
-                    <thead>
-                        <tr style='background: #f8fafc; text-align: left;'>
-                            <th style='padding: 10px 12px; border-bottom: 2px solid #cbd5e0; color: #4a5568;'>Day</th>
-                            <th style='padding: 10px 12px; border-bottom: 2px solid #cbd5e0; color: #4a5568;'>Hours</th>
-                            <th style='padding: 10px 12px; border-bottom: 2px solid #cbd5e0; color: #4a5568;'>Shift</th>
-                            <th style='padding: 10px 12px; border-bottom: 2px solid #cbd5e0; color: #4a5568;'>Location</th>
-                        </tr>
-                    </thead>
-                    <tbody>{$rowsHtml}</tbody>
-                </table>
+            <table style='width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px;'>
+                <thead>
+                    <tr style='background: #f8fafc; text-align: left;'>
+                        <th style='padding: 10px 12px; border-bottom: 2px solid #cbd5e0; color: #4a5568;'>Day</th>
+                        <th style='padding: 10px 12px; border-bottom: 2px solid #cbd5e0; color: #4a5568;'>Hours</th>
+                        <th style='padding: 10px 12px; border-bottom: 2px solid #cbd5e0; color: #4a5568;'>Shift</th>
+                        <th style='padding: 10px 12px; border-bottom: 2px solid #cbd5e0; color: #4a5568;'>Location</th>
+                    </tr>
+                </thead>
+                <tbody>{$rowsHtml}</tbody>
+            </table>
 
-                <p style='margin: 20px 0 12px;'>
-                    <a href='{$portalUrl}' style='display: inline-block; background: #3182ce; color: #ffffff; text-decoration: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; font-size: 14px;'>
-                        View Live Dashboard Calendar →
-                    </a>
-                </p>
-                <p style='font-size: 12px; color: #718096; margin-bottom: 0;'>
-                    Approved time off is automatically excluded. Check your live dashboard if mid-week adjustments occur.
-                </p>
-            </div>
-        </div>";
+            <p style='margin: 20px 0 12px;'>
+                <a href='{$portalUrl}' style='display: inline-block; background: #3182ce; color: #ffffff; text-decoration: none; padding: 10px 18px; border-radius: 6px; font-weight: 600; font-size: 14px;'>
+                    View Live Dashboard Calendar →
+                </a>
+            </p>
+            <p style='font-size: 12px; color: #718096; margin-bottom: 0;'>
+                Approved time off is automatically excluded. Check your live dashboard if mid-week adjustments occur.
+            </p>
+        </div>
+    </div>
+</body>
+</html>";
 
         $plainBody = "Hi {$empData['first_name']},\n\n"
                    . "Here are your scheduled shifts for {$weekLabel}:\n\n"
@@ -145,6 +153,8 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
 
         try {
             $mail = new PHPMailer(true);
+            $mail->CharSet    = 'UTF-8';
+            $mail->Encoding   = 'base64';
             $mail->isSMTP();
             $mail->Host       = $mailConfig['smtp_host'];
             $mail->SMTPAuth   = true;
@@ -168,6 +178,7 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
         }
     }
 
+    // Record sent timestamp so duplicate Sunday runs won't re-send
     if ($result['sent'] > 0) {
         $state[$mondayDate] = date('c');
         file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
