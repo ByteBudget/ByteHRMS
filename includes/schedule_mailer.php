@@ -43,9 +43,10 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
             st.template_name,
             e.first_name,
             e.last_name,
-            COALESCE(NULLIF(TRIM(e.work_email), ""), NULLIF(TRIM(e.personal_email), "")) AS target_email
+            COALESCE(NULLIF(TRIM(e.work_email), ""), NULLIF(TRIM(u.email), "")) AS target_email
         FROM shift_assignments sa
         JOIN employees e ON sa.employee_id = e.employee_id
+        LEFT JOIN users u ON e.user_id = u.user_id
         LEFT JOIN shift_templates st ON sa.shift_template_id = st.shift_template_id
         WHERE e.employment_status = "active"
           AND sa.shift_date BETWEEN :monday AND :sunday
@@ -85,8 +86,7 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
             continue;
         }
 
-        // Build shift table rows
-        $rowsHtml = '';
+        $rowsHtml   = '';
         $plainLines = [];
         foreach ($empData['shifts'] as $s) {
             $dayStr   = date('l, M j', strtotime($s['shift_date']));
@@ -168,7 +168,6 @@ function sendWeeklyScheduleEmails(PDO $pdo, string $mondayDate, string $sundayDa
         }
     }
 
-    // Record sent timestamp so duplicate Sunday runs won't re-send
     if ($result['sent'] > 0) {
         $state[$mondayDate] = date('c');
         file_put_contents($stateFile, json_encode($state, JSON_PRETTY_PRINT));
